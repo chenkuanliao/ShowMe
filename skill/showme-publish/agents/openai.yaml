@@ -1,0 +1,4 @@
+interface:
+  display_name: "ShowMe Publish"
+  short_description: "Create HTML, publish it, and return its link"
+  default_prompt: "Use $showme-publish to create or update the requested HTML artifact, publish it automatically, and always return the clickable ShowMe URL."

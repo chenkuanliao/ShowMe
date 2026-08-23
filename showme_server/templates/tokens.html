@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}API tokens · ShowMe{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <h1>API tokens</h1>
+    <p>Give each computer its own credential so you can revoke one without touching the others.</p>
+  </div>
+</section>
+
+{% if generated_token %}
+<section class="secret secret-standalone" role="status">
+  {{ icon('check', 'secret-ok') }}
+  <div class="secret-body">
+    <strong>Token created</strong>
+    <p>Copy it now — the server stores only its hash and cannot show it again.</p>
+    <div class="secret-value">
+      <code id="generated-api-token">{{ generated_token }}</code>
+      <button type="button" class="btn btn-outline btn-sm copy-btn"
+              data-copy-target="generated-api-token" data-copy-name="Token">
+        {{ icon('copy') }}{{ icon('check') }}<span class="copy-label">Copy token</span>
+      </button>
+      <span class="copy-feedback" aria-live="polite"></span>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<div class="token-split">
+  <section class="panel">
+    <div class="panel-bar">
+      <div><h2>New token</h2><p>Name it after the machine that will use it.</p></div>
+    </div>
+    <div class="panel-body">
+      {% if error %}<div class="alert" role="alert">{{ icon('alert') }}<span>{{ error }}</span></div>{% endif %}
+      <form method="post" class="form">
+        <input type="hidden" name="csrf_token" value="{{ g.admin_session['csrf_token'] }}">
+        <label class="field">
+          <span>Machine name</span>
+          <input name="name" maxlength="80" placeholder="MacBook Pro" required>
+        </label>
+        <div class="form-actions">
+          <button class="btn btn-primary" type="submit">{{ icon('plus') }} Create token</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-bar">
+      <div><h2>Active tokens</h2><p>{{ tokens|length }} machine credential{% if tokens|length != 1 %}s{% endif %}</p></div>
+    </div>
+    <ul class="token-rows">
+    {% for token in tokens %}
+      <li class="token-row">
+        {{ icon('machine') }}
+        <div>
+          <strong>{{ token['name'] }}</strong>
+          <small>Created {{ token['created_at'][:10] }}{% if token['last_used_at'] %} · Last used {{ token['last_used_at'][:10] }}{% else %} · Never used{% endif %}</small>
+        </div>
+        <form method="post" action="{{ url_for('revoke_token', token_id=token['id']) }}">
+          <input type="hidden" name="csrf_token" value="{{ g.admin_session['csrf_token'] }}">
+          <button class="btn btn-danger btn-sm" type="submit">Revoke</button>
+        </form>
+      </li>
+    {% else %}
+      <li class="mini-empty">No tokens yet. Create one to connect your first machine.</li>
+    {% endfor %}
+    </ul>
+  </section>
+</div>
+{% endblock %}

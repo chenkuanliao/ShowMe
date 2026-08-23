@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <meta name="theme-color" content="#18212b">
+    <title>Private page · ShowMe</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=asset_version) }}">
+  </head>
+  <body class="gate-page">
+    {%- from "_icons.html" import icon -%}
+    <span class="wordmark">ShowMe</span>
+    <main class="auth-card">
+      <span class="auth-mark" aria-hidden="true">{{ icon('lock') }}</span>
+      <h1>{{ page['title'] }}</h1>
+      <p>This page is private. Enter its passcode to continue.</p>
+      {% if error %}<div class="alert" role="alert">{{ icon('alert') }}<span>{{ error }}</span></div>{% endif %}
+      <form class="form" method="post" action="{{ url_for('unlock_page', page_id=page['id']) }}">
+        <label class="field">
+          <span>Passcode</span>
+          <input type="text" name="passcode" autocomplete="one-time-code" autocapitalize="none"
+                 autocorrect="off" spellcheck="false" required autofocus>
+        </label>
+        <button class="btn btn-primary btn-block" type="submit">View page</button>
+      </form>
+    </main>
+    <p class="auth-foot">Protected by ShowMe</p>
+  </body>
+</html>

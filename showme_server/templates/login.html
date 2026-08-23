@@ -1,0 +1,20 @@
+{% extends "auth_base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Log in · ShowMe{% endblock %}
+{% block content %}
+  <span class="auth-mark" aria-hidden="true">{{ icon('shield') }}</span>
+  <h1>Sign in</h1>
+  <p>Administrator access to this ShowMe server.</p>
+  {% if error %}<div class="alert" role="alert">{{ icon('alert') }}<span>{{ error }}</span></div>{% endif %}
+  <form method="post" class="form">
+    <label class="field">
+      <span>Username</span>
+      <input value="admin" autocomplete="username" disabled>
+    </label>
+    <label class="field">
+      <span>Password</span>
+      <input type="password" name="password" autocomplete="current-password" required autofocus>
+    </label>
+    <button class="btn btn-primary btn-block" type="submit">Open dashboard</button>
+  </form>
+{% endblock %}

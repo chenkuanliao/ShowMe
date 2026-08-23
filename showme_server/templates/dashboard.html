@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Pages · ShowMe{% endblock %}
+{% block content %}
+{% set archived_count = metrics['total'] - metrics['active'] %}
+
+<section class="page-head">
+  <div>
+    <h1>Your pages</h1>
+    <p>Everything published to this server, from every connected machine.</p>
+  </div>
+  <div class="page-head-tools">
+    <span class="live-status" data-live-status><i aria-hidden="true"></i><span>Live updates</span></span>
+    <div class="cmd">
+      <code>showme publish ./report</code>
+      <button type="button" class="btn btn-quiet btn-sm btn-icon copy-btn"
+              data-copy-target="publish-command" data-copy-name="Command" aria-label="Copy command">
+        {{ icon('copy') }}{{ icon('check') }}
+      </button>
+      <span class="visually-hidden" id="publish-command">showme publish ./report</span>
+      <span class="copy-feedback" aria-live="polite"></span>
+    </div>
+  </div>
+</section>
+
+<div id="dashboard-live-region" data-dashboard-version="{{ dashboard_version }}" data-live-url="{{ url_for('dashboard') }}">
+<p class="notice">
+  {{ icon('alert') }}
+  <span><strong>Only publish content you trust.</strong> Uploaded HTML and JavaScript are served as-is and are not sanitized.</span>
+</p>
+
+<section class="panel pages-panel">
+  {% if pages %}
+  <div class="panel-bar">
+    <div class="segmented" role="group" aria-label="Filter pages">
+      <input class="seg-input" type="radio" name="page-filter" id="filter-all" checked>
+      <label class="seg" for="filter-all">All <b>{{ metrics['total'] }}</b></label>
+      <input class="seg-input" type="radio" name="page-filter" id="filter-live">
+      <label class="seg" for="filter-live">Live <b>{{ metrics['active'] }}</b></label>
+      <input class="seg-input" type="radio" name="page-filter" id="filter-private">
+      <label class="seg" for="filter-private">Private <b>{{ metrics['private'] }}</b></label>
+      <input class="seg-input" type="radio" name="page-filter" id="filter-archived">
+      <label class="seg" for="filter-archived">Archived <b>{{ archived_count }}</b></label>
+    </div>
+    <div class="filter-controls">
+      <label class="search-control">
+        <span class="visually-hidden">Search pages</span>
+        {{ icon('search') }}
+        <input type="search" data-page-search placeholder="Search pages" autocomplete="off">
+      </label>
+      <label class="machine-control">
+        <span class="visually-hidden">Filter by machine</span>
+        {{ icon('machine') }}
+        <select data-machine-filter>
+          <option value="">All machines</option>
+          {% for machine in machines %}<option value="{{ machine }}">{{ machine }}</option>{% endfor %}
+        </select>
+      </label>
+    </div>
+  </div>
+
+  <ul class="page-rows">
+  {% for page in pages %}
+    {% set is_active = page['status'] == 'active' %}
+    {% set is_private = page['visibility'] == 'private' %}
+    {% set source_name = page['source_name'] or 'Unknown machine' %}
+    <li class="page-row {% if not is_active %}is-archived{% endif %}" data-page-id="{{ page['id'] }}"
+        data-state="{{ 'live' if is_active else 'archived' }} {{ 'private' if is_private else 'public' }}"
+        data-machine="{{ source_name }}" data-search="{{ (page['title'] ~ ' ' ~ page['description'] ~ ' ' ~ page['id'] ~ ' ' ~ source_name)|lower }}">
+      <div class="row-main">
+        <div class="row-info">
+          <div class="row-title">
+            <h3>{{ page['title'] }}</h3>
+            {% if is_private %}
+              <span class="tag tag-private">Private</span>
+            {% else %}
+              <span class="tag tag-public">Public</span>
+            {% endif %}
+            {% if not is_active %}<span class="tag tag-archived">Archived</span>{% endif %}
+          </div>
+          {% if page['description'] %}<p class="row-description">{{ page['description'] }}</p>{% endif %}
+          <div class="row-meta">
+            <button type="button" class="link-chip copy-btn"
+                    data-copy-target="url-{{ page['id'] }}" data-copy-name="Link"
+                    title="Copy link" aria-label="Copy link to {{ page['title'] }}">
+              <span>/p/{{ page['id'] }}/</span>{{ icon('copy') }}{{ icon('check') }}
+            </button>
+            <span class="visually-hidden" id="url-{{ page['id'] }}">{{ url_for('serve_page', page_id=page['id'], asset_path='', _external=True) }}</span>
+            <span class="copy-feedback" aria-live="polite"></span>
+            <span class="dot-sep" aria-hidden="true">·</span>
+            <span>Updated <time datetime="{{ page['updated_at'] }}">{{ page['updated_at'][:10] }}</time></span>
+            <span class="dot-sep" aria-hidden="true">·</span>
+            <span class="row-machine">{{ icon('machine') }} {{ source_name }}</span>
+          </div>
+        </div>
+
+        <div class="row-actions">
+          {% if is_active %}
+            <a class="btn btn-outline btn-sm" href="{{ url_for('serve_page', page_id=page['id'], asset_path='') }}" target="_blank" rel="noopener">
+              Open {{ icon('external') }}
+            </a>
+          {% endif %}
+          <form method="post" action="{{ url_for('dashboard_visibility', page_id=page['id']) }}">
+            <input type="hidden" name="csrf_token" value="{{ g.admin_session['csrf_token'] }}">
+            <input type="hidden" name="visibility" value="{{ 'public' if is_private else 'private' }}">
+            <button class="btn btn-outline btn-sm" type="submit">
+              {% if is_private %}{{ icon('globe') }} Make public{% else %}{{ icon('lock') }} Make private{% endif %}
+            </button>
+          </form>
+          <details class="menu">
+            <summary aria-label="More actions for {{ page['title'] }}">{{ icon('more') }}</summary>
+            <div class="menu-popover">
+              <a href="{{ url_for('dashboard_edit', page_id=page['id']) }}">{{ icon('edit') }} Edit details</a>
+              <a href="{{ url_for('dashboard_download', page_id=page['id']) }}">{{ icon('download') }} Download source</a>
+              <div class="menu-sep" role="separator"></div>
+              {% if is_private %}
+              <form method="post" action="{{ url_for('dashboard_visibility', page_id=page['id']) }}">
+                <input type="hidden" name="csrf_token" value="{{ g.admin_session['csrf_token'] }}">
+                <input type="hidden" name="visibility" value="private">
+                <button type="submit">{{ icon('key') }} New passcode</button>
+              </form>
+              {% endif %}
+              <form method="post" action="{{ url_for('dashboard_status', page_id=page['id']) }}">
+                <input type="hidden" name="csrf_token" value="{{ g.admin_session['csrf_token'] }}">
+                <input type="hidden" name="status" value="{{ 'archived' if is_active else 'active' }}">
+                <button type="submit">
+                  {% if is_active %}{{ icon('archive') }} Archive page{% else %}{{ icon('restore') }} Restore page{% endif %}
+                </button>
+              </form>
+              <div class="menu-sep" role="separator"></div>
+              <a class="menu-danger" href="{{ url_for('dashboard_delete_confirm', page_id=page['id']) }}">{{ icon('trash') }} Delete permanently</a>
+            </div>
+          </details>
+        </div>
+      </div>
+
+      {% if generated_passcode and changed_page == page['id'] %}
+      <div class="secret" role="status">
+        {{ icon('key') }}
+        <div class="secret-body">
+          <strong>Private passcode</strong>
+          <p>Save it now — for security it is shown only once.</p>
+          <div class="secret-value">
+            <code id="generated-passcode-{{ page['id'] }}">{{ generated_passcode }}</code>
+            <button type="button" class="btn btn-outline btn-sm copy-btn"
+                    data-copy-target="generated-passcode-{{ page['id'] }}" data-copy-name="Passcode">
+              {{ icon('copy') }}{{ icon('check') }}<span class="copy-label">Copy</span>
+            </button>
+            <span class="copy-feedback" aria-live="polite"></span>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+    </li>
+  {% endfor %}
+  </ul>
+
+  <div class="filter-empty" aria-live="polite"><p>No pages match your filters.</p></div>
+
+  {% else %}
+  <div class="empty">
+    <span class="empty-mark" aria-hidden="true">{{ icon('file') }}</span>
+    <h3>No pages published yet</h3>
+    <p>Create a directory containing <code>index.html</code>, then publish it from any machine running the CLI.</p>
+    <span class="cmd"><code>showme publish ./my-report</code></span>
+  </div>
+  {% endif %}
+</section>
+</div>
+{% endblock %}

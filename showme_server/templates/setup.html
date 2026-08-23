@@ -1,0 +1,26 @@
+{% extends "auth_base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Set up ShowMe{% endblock %}
+{% block content %}
+  <span class="auth-step">One-time setup</span>
+  <h1>Create the administrator</h1>
+  <p>ShowMe has a single administrator. Choose a password — there is no email recovery, so store it somewhere safe.</p>
+  {% if error %}<div class="alert" role="alert">{{ icon('alert') }}<span>{{ error }}</span></div>{% endif %}
+  <form method="post" class="form">
+    <input type="hidden" name="token" value="{{ token }}">
+    <label class="field">
+      <span>Username</span>
+      <input value="admin" disabled>
+    </label>
+    <label class="field">
+      <span>Password</span>
+      <input type="password" name="password" autocomplete="new-password" required autofocus>
+    </label>
+    <label class="field">
+      <span>Confirm password</span>
+      <input type="password" name="confirmation" autocomplete="new-password" required>
+    </label>
+    <button class="btn btn-primary btn-block" type="submit">Create administrator</button>
+  </form>
+{% endblock %}
+{% block footnote %}You will create API tokens afterwards, from the dashboard{% endblock %}

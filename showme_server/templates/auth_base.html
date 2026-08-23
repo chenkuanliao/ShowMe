@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <meta name="theme-color" content="#18212b">
+    <title>{% block title %}ShowMe{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=asset_version) }}">
+  </head>
+  <body class="auth-page">
+    <main class="auth-shell">
+      <section class="auth-story">
+        <a class="wordmark" href="{{ url_for('root') }}">ShowMe</a>
+        <div class="story-copy">
+          <h1>Publish rich reports without running another local server.</h1>
+          <p>Keep agent-generated dashboards, analyses, and visual summaries organised and reachable from anywhere.</p>
+        </div>
+        <ul class="story-points">
+          <li>Directory uploads</li>
+          <li>Private links</li>
+          <li>Full control</li>
+        </ul>
+      </section>
+      <section class="auth-panel">
+        <div class="auth-card">
+          {% block content %}{% endblock %}
+        </div>
+        <p class="auth-foot">{% block footnote %}Self-hosted on your own infrastructure{% endblock %}</p>
+      </section>
+    </main>
+  </body>
+</html>

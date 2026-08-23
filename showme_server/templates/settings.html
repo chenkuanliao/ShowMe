@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Settings · ShowMe{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <h1>Settings</h1>
+    <p>This server has a single administrator account.</p>
+  </div>
+</section>
+
+<div class="split">
+  <aside class="split-aside">
+    <strong>Administrator password</strong>
+    <p>Changing it signs out every other dashboard session. API tokens are unaffected — pages keep publishing.</p>
+  </aside>
+  <section class="panel">
+    <div class="panel-bar">
+      <div><h2>Change password</h2><p>Signed in as <code>admin</code></p></div>
+    </div>
+    <div class="panel-body">
+      {% if error %}<div class="alert" role="alert">{{ icon('alert') }}<span>{{ error }}</span></div>{% endif %}
+      <form method="post" class="form">
+        <input type="hidden" name="csrf_token" value="{{ g.admin_session['csrf_token'] }}">
+        <label class="field">
+          <span>Current password</span>
+          <input type="password" name="current_password" autocomplete="current-password" required>
+        </label>
+        <label class="field">
+          <span>New password</span>
+          <input type="password" name="password" autocomplete="new-password" required>
+        </label>
+        <label class="field">
+          <span>Confirm new password</span>
+          <input type="password" name="confirmation" autocomplete="new-password" required>
+        </label>
+        <div class="form-actions">
+          <button class="btn btn-primary" type="submit">Update password</button>
+        </div>
+      </form>
+    </div>
+  </section>
+</div>
+{% endblock %}

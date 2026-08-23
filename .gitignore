@@ -1,0 +1,52 @@
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.local
+
+# ShowMe runtime data and secrets
+data/
+showme_data/
+*.db
+*.db-shm
+*.db-wal
+secret-key
+setup-token
+recovery-token
+
+# Generated reports and downloaded archives
+artifacts/
+downloads/
+*.zip
+
+# Python environments, caches, and build output
+.venv/
+venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+
+# Editor and operating-system files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.code-workspace

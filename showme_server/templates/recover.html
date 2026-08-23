@@ -1,0 +1,21 @@
+{% extends "auth_base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Recover ShowMe{% endblock %}
+{% block content %}
+  <span class="auth-step">Recovery</span>
+  <h1>Choose a new password</h1>
+  <p>This one-time link stops working once the password is reset, and all dashboard sessions are signed out.</p>
+  {% if error %}<div class="alert" role="alert">{{ icon('alert') }}<span>{{ error }}</span></div>{% endif %}
+  <form method="post" class="form">
+    <input type="hidden" name="token" value="{{ token }}">
+    <label class="field">
+      <span>New password</span>
+      <input type="password" name="password" autocomplete="new-password" required autofocus>
+    </label>
+    <label class="field">
+      <span>Confirm password</span>
+      <input type="password" name="confirmation" autocomplete="new-password" required>
+    </label>
+    <button class="btn btn-primary btn-block" type="submit">Reset password</button>
+  </form>
+{% endblock %}

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Delete {{ page['title'] }} · ShowMe{% endblock %}
+{% block content %}
+<div class="narrow-page">
+<section class="page-head">
+  <div>
+    <h1>Delete this page?</h1>
+    <p>Its files and dashboard record are removed immediately. This cannot be undone.</p>
+  </div>
+</section>
+
+<section class="panel danger-panel">
+  <div class="danger-head">
+    <span class="danger-mark" aria-hidden="true">{{ icon('trash') }}</span>
+    <div>
+      <h2>{{ page['title'] }}</h2>
+      <p>Every existing link to this page will stop working. Archive it instead if you only want to take it offline.</p>
+    </div>
+  </div>
+  <dl class="summary-list">
+    <div><dt>Page ID</dt><dd><code>{{ page['id'] }}</code></dd></div>
+    <div><dt>Link</dt><dd><code>/p/{{ page['id'] }}/</code></dd></div>
+    <div><dt>Visibility</dt><dd>{{ page['visibility'] }}</dd></div>
+    <div><dt>Status</dt><dd>{{ page['status'] }}</dd></div>
+  </dl>
+  <div class="danger-foot">
+    <a class="btn btn-outline" href="{{ url_for('dashboard') }}">Cancel</a>
+    <form method="post" action="{{ url_for('dashboard_delete', page_id=page['id']) }}">
+      <input type="hidden" name="csrf_token" value="{{ g.admin_session['csrf_token'] }}">
+      <button class="btn btn-solid-danger" type="submit">Delete permanently</button>
+    </form>
+  </div>
+</section>
+</div>
+{% endblock %}

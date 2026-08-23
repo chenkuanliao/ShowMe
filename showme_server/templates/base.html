@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <meta name="theme-color" content="#18212b">
+    <title>{% block title %}ShowMe{% endblock %}</title>
+    <link rel="stylesheet" data-showme-asset="style" href="{{ url_for('static', filename='style.css', v=asset_version) }}">
+    <script data-showme-asset="script" src="{{ url_for('static', filename='app.js', v=asset_version) }}" defer></script>
+  </head>
+  <body class="app-page">
+    {%- from "_icons.html" import icon -%}
+    <header class="app-header">
+      <div class="header-inner">
+        <a class="wordmark" href="{{ url_for('dashboard') }}">ShowMe</a>
+        {% if g.admin_session %}
+          <nav class="app-nav" aria-label="Primary">
+            <a href="{{ url_for('dashboard') }}" {% if request.endpoint in ['dashboard', 'dashboard_edit', 'dashboard_download', 'dashboard_visibility', 'dashboard_status', 'dashboard_delete', 'dashboard_delete_confirm'] %}aria-current="page"{% endif %}>Pages</a>
+            <a href="{{ url_for('tokens') }}" {% if request.endpoint in ['tokens', 'revoke_token'] %}aria-current="page"{% endif %}>API tokens</a>
+            <a href="{{ url_for('settings') }}" {% if request.endpoint == 'settings' %}aria-current="page"{% endif %}>Settings</a>
+          </nav>
+          <div class="header-end">
+            <form method="post" action="{{ url_for('logout') }}">
+              <input type="hidden" name="csrf_token" value="{{ g.admin_session['csrf_token'] }}">
+              <button class="btn btn-quiet btn-sm" type="submit">{{ icon('logout') }} Log out</button>
+            </form>
+          </div>
+        {% endif %}
+      </div>
+    </header>
+    <main class="app-main">
+      {% with messages = get_flashed_messages() %}
+        {% for message in messages %}
+          <div class="toast" role="status">{{ icon('check') }}<span>{{ message }}</span></div>
+        {% endfor %}
+      {% endwith %}
+      {% block content %}{% endblock %}
+    </main>
+  </body>
+</html>
