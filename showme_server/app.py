@@ -345,6 +345,31 @@ def create_app(test_config: dict | None = None) -> Flask:
             max_age=0,
         )
 
+    @app.get("/api/pages/<page_id>/source")
+    @api_required
+    def api_page_source(page_id: str):
+        page = get_db().execute("SELECT * FROM pages WHERE id = ?", (page_id,)).fetchone()
+        if not page:
+            return jsonify(error="Page not found."), 404
+        site_dir = SITES_DIR / page_id
+        if not site_dir.is_dir():
+            return jsonify(error="Page source is missing."), 404
+        archive_file = tempfile.SpooledTemporaryFile(max_size=8 * 1024 * 1024)
+        with zipfile.ZipFile(archive_file, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            for source in sorted(site_dir.rglob("*")):
+                if source.is_file():
+                    archive.write(source, source.relative_to(site_dir).as_posix())
+        archive_file.seek(0)
+        response = send_file(
+            archive_file,
+            mimetype="application/zip",
+            as_attachment=True,
+            download_name=f"showme-{page_id}.zip",
+            max_age=0,
+        )
+        response.headers["Cache-Control"] = "private, no-store"
+        return response
+
     @app.post("/admin/pages/<page_id>/visibility")
     @admin_required
     def dashboard_visibility(page_id: str):

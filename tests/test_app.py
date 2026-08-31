@@ -138,6 +138,14 @@ def test_complete_page_lifecycle():
 
     anonymous = app.test_client()
     assert anonymous.get(f"/admin/pages/{page_id}/download").status_code == 302
+    assert anonymous.get(f"/api/pages/{page_id}/source").status_code == 401
+    source = client.get(f"/api/pages/{page_id}/source", headers=headers)
+    assert source.status_code == 200
+    assert source.mimetype == "application/zip"
+    with zipfile.ZipFile(io.BytesIO(source.data)) as archive:
+        assert sorted(archive.namelist()) == ["assets/dot.txt", "index.html"]
+        assert archive.read("index.html") == b"<h1>Hello</h1><img src='./assets/dot.txt'>"
+    assert client.get("/api/pages/does-not-exist/source", headers=headers).status_code == 404
 
     original_url = page["url"]
     response = client.put(

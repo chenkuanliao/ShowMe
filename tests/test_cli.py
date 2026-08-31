@@ -30,6 +30,18 @@ def test_make_site_zip_preserves_relative_assets(tmp_path):
         archive_path.unlink()
 
 
+def test_make_site_zip_excludes_showme_metadata(tmp_path):
+    (tmp_path / "index.html").write_text("<h1>Report</h1>", encoding="utf-8")
+    (tmp_path / ".showme.json").write_text('{"page_id":"abc"}', encoding="utf-8")
+    (tmp_path / ".showme-workspace.json").write_text('{"id":"marker"}', encoding="utf-8")
+    archive_path = CLI.make_site_zip(tmp_path)
+    try:
+        with zipfile.ZipFile(archive_path) as archive:
+            assert archive.namelist() == ["index.html"]
+    finally:
+        archive_path.unlink()
+
+
 def test_make_site_zip_requires_root_index(tmp_path):
     (tmp_path / "report.html").write_text("hello", encoding="utf-8")
     with pytest.raises(CLI.ShowMeError, match="index.html"):
@@ -124,6 +136,58 @@ def test_installer_publish_and_uninstaller_lifecycle(tmp_path):
         assert result["visibility"] == "public"
         assert result["machine"] == "cli integration"
 
+        retained = tmp_path / "retained-report"
+        pulled_process = subprocess.run(
+            [str(installed_cli), "pull", result["url"], str(retained), "--json"],
+            env=environment,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        pulled = json.loads(pulled_process.stdout)
+        assert pulled["id"] == result["id"]
+        assert (retained / "index.html").read_text(encoding="utf-8") == "<h1>CLI integration</h1>"
+        manifest = json.loads((retained / ".showme.json").read_text(encoding="utf-8"))
+        assert manifest["page_id"] == result["id"]
+
+        (retained / "index.html").write_text("<h1>Manifest update</h1>", encoding="utf-8")
+        manifest_update = subprocess.run(
+            [str(installed_cli), "update", str(retained), "--json"],
+            env=environment,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        assert json.loads(manifest_update.stdout)["id"] == result["id"]
+
+        workspace_process = subprocess.run(
+            [str(installed_cli), "workspace", "pull", result["id"], "--json"],
+            env=environment,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        workspace = Path(json.loads(workspace_process.stdout)["directory"])
+        assert workspace.is_dir()
+        assert (workspace / ".showme-workspace.json").is_file()
+        assert (workspace / "index.html").read_text(encoding="utf-8") == "<h1>Manifest update</h1>"
+        subprocess.run(
+            [str(installed_cli), "workspace", "clean", str(workspace)],
+            env=environment,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        assert not workspace.exists()
+        refused_cleanup = subprocess.run(
+            [str(installed_cli), "workspace", "clean", str(retained)],
+            env=environment,
+            capture_output=True,
+            text=True,
+        )
+        assert refused_cleanup.returncode == 1
+        assert retained.is_dir()
+
         (site / "index.html").write_text("<h1>CLI updated</h1>", encoding="utf-8")
         updated_process = subprocess.run(
             [str(installed_cli), "update", result["url"], str(site), "--title", "CLI updated", "--json"],
@@ -136,6 +200,17 @@ def test_installer_publish_and_uninstaller_lifecycle(tmp_path):
         assert updated["id"] == result["id"]
         assert updated["url"] == result["url"]
         assert updated["title"] == "CLI updated"
+
+        upgraded = subprocess.run(
+            [str(repository / "install.sh"), "--upgrade"],
+            cwd=repository,
+            env=environment,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        assert "ShowMe upgraded" in upgraded.stdout
+        assert "Status: connected" in upgraded.stdout
 
         subprocess.run(
             [str(installed_cli), "uninstall", "--all"],

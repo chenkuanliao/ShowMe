@@ -5,10 +5,12 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import io
 import ipaddress
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -24,6 +26,9 @@ from urllib.parse import urlparse
 CONFIG_HOME = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
 CONFIG_PATH = CONFIG_HOME / "showme" / "config.json"
 UNINSTALLER = Path.home() / ".local" / "share" / "showme" / "uninstall.sh"
+WORKSPACE_ROOT = Path(tempfile.gettempdir()) / f"showme-workspaces-{os.getuid()}"
+WORKSPACE_MARKER = ".showme-workspace.json"
+PROJECT_MANIFEST = ".showme.json"
 
 
 class ShowMeError(Exception):
@@ -66,6 +71,11 @@ def normalize_server_url(server: str) -> str:
 
 
 def api_request(method: str, path: str, payload: dict | None = None, body: bytes | None = None, headers=None):
+    content = raw_api_request(method, path, payload=payload, body=body, headers=headers)
+    return json.loads(content) if content else None
+
+
+def raw_api_request(method: str, path: str, payload: dict | None = None, body: bytes | None = None, headers=None) -> bytes:
     config = load_config()
     request_headers = {"Authorization": f"Bearer {config['token']}", "Accept": "application/json"}
     request_headers.update(headers or {})
@@ -77,8 +87,7 @@ def api_request(method: str, path: str, payload: dict | None = None, body: bytes
     )
     try:
         with urllib.request.urlopen(request, timeout=60) as response:
-            content = response.read()
-            return json.loads(content) if content else None
+            return response.read()
     except urllib.error.HTTPError as error:
         detail = error.read().decode("utf-8", errors="replace")
         try:
@@ -100,7 +109,7 @@ def make_site_zip(site_dir: Path) -> Path:
     for path in site_dir.rglob("*"):
         if path.is_symlink():
             raise ShowMeError(f"Symbolic links are not allowed: {path}")
-        if path.is_file():
+        if path.is_file() and path.name not in {WORKSPACE_MARKER, PROJECT_MANIFEST}:
             files.append(path)
     handle, archive_name = tempfile.mkstemp(prefix="showme-", suffix=".zip")
     os.close(handle)
@@ -211,9 +220,130 @@ def page_id_from_reference(value: str) -> str:
     return value
 
 
+def project_manifest(directory: Path) -> dict:
+    path = directory.expanduser().resolve() / PROJECT_MANIFEST
+    if not path.is_file():
+        raise ShowMeError(f"No {PROJECT_MANIFEST} found in {directory}.")
+    try:
+        result = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ShowMeError(f"Cannot read {path}: {error}") from error
+    if not result.get("page_id"):
+        raise ShowMeError(f"{path} does not contain a page_id.")
+    return result
+
+
+def safe_extract(archive_data: bytes, destination: Path) -> None:
+    try:
+        with zipfile.ZipFile(io.BytesIO(archive_data)) as archive:
+            for member in archive.infolist():
+                path = Path(member.filename)
+                if path.is_absolute() or ".." in path.parts:
+                    raise ShowMeError("The server returned an archive with an unsafe path.")
+                mode = member.external_attr >> 16
+                if stat.S_ISLNK(mode):
+                    raise ShowMeError("The server returned an archive containing a symbolic link.")
+            archive.extractall(destination)
+    except zipfile.BadZipFile as error:
+        raise ShowMeError("The server returned an invalid source archive.") from error
+
+
+def pull_page(page: str, destination: Path, workspace: bool = False) -> dict:
+    page_id = page_id_from_reference(page)
+    pages = api_request("GET", "/api/pages")["pages"]
+    metadata = next((item for item in pages if item["id"] == page_id), None)
+    if not metadata:
+        raise ShowMeError("Page not found.")
+    destination = destination.expanduser().resolve()
+    if workspace:
+        allowed = {WORKSPACE_MARKER}
+        if not destination.is_dir() or {item.name for item in destination.iterdir()} - allowed:
+            raise ShowMeError("The managed workspace is not empty.")
+    elif destination.exists():
+        raise ShowMeError(f"Destination already exists: {destination}")
+    else:
+        destination.mkdir(parents=True)
+    try:
+        archive_data = raw_api_request("GET", f"/api/pages/{page_id}/source")
+        safe_extract(archive_data, destination)
+        manifest = {
+            "version": 1,
+            "server": load_config()["server"],
+            "page_id": page_id,
+            "url": metadata["url"],
+        }
+        (destination / PROJECT_MANIFEST).write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    except Exception:
+        if not workspace:
+            shutil.rmtree(destination, ignore_errors=True)
+        raise
+    return metadata
+
+
+def create_workspace() -> Path:
+    WORKSPACE_ROOT.mkdir(mode=0o700, parents=True, exist_ok=True)
+    directory = Path(tempfile.mkdtemp(prefix="report-", dir=WORKSPACE_ROOT))
+    (directory / WORKSPACE_MARKER).write_text(
+        json.dumps({"version": 1, "id": uuid.uuid4().hex}) + "\n", encoding="utf-8"
+    )
+    return directory
+
+
+def clean_workspace(directory: Path) -> None:
+    directory = directory.expanduser().resolve()
+    if directory.parent != WORKSPACE_ROOT.resolve():
+        raise ShowMeError("Refusing to remove a directory outside the ShowMe workspace root.")
+    marker = directory / WORKSPACE_MARKER
+    if not marker.is_file():
+        raise ShowMeError("Refusing to remove a directory without a ShowMe workspace marker.")
+    try:
+        marker_data = json.loads(marker.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ShowMeError("Refusing to remove a workspace with an invalid marker.") from error
+    if marker_data.get("version") != 1 or not marker_data.get("id"):
+        raise ShowMeError("Refusing to remove a workspace with an invalid marker.")
+    shutil.rmtree(directory)
+
+
+def command_pull(args) -> None:
+    destination = Path(args.directory)
+    result = pull_page(args.page, destination)
+    print(json.dumps({"directory": str(destination.expanduser().resolve()), **result}, indent=2) if args.json else f"Downloaded {result['url']} to {destination.expanduser().resolve()}")
+
+
+def command_workspace(args) -> None:
+    if args.workspace_command == "create":
+        directory = create_workspace()
+        print(json.dumps({"directory": str(directory)}, indent=2) if args.json else directory)
+    elif args.workspace_command == "pull":
+        directory = create_workspace()
+        try:
+            result = pull_page(args.page, directory, workspace=True)
+        except Exception:
+            clean_workspace(directory)
+            raise
+        output = {"directory": str(directory), **result}
+        print(json.dumps(output, indent=2) if args.json else directory)
+    else:
+        clean_workspace(Path(args.directory))
+        print(f"Removed managed workspace: {Path(args.directory).expanduser().resolve()}")
+
+
 def command_update(args) -> None:
-    page_id = page_id_from_reference(args.page)
-    archive = make_site_zip(Path(args.directory))
+    if args.directory is None:
+        directory = Path(args.page)
+        manifest = project_manifest(directory)
+        configured_server = load_config()["server"].rstrip("/")
+        if manifest.get("server", "").rstrip("/") != configured_server:
+            raise ShowMeError(
+                f"This project belongs to {manifest.get('server') or 'an unknown server'}, "
+                f"but ShowMe is configured for {configured_server}."
+            )
+        page_id = page_id_from_reference(manifest["page_id"])
+    else:
+        directory = Path(args.directory)
+        page_id = page_id_from_reference(args.page)
+    archive = make_site_zip(directory)
     fields = {"title": args.title} if args.title else {}
     try:
         result = multipart_upload(
@@ -321,12 +451,31 @@ def parser() -> argparse.ArgumentParser:
     publish.add_argument("--json", action="store_true")
     publish.set_defaults(func=command_publish)
 
+    pull = subcommands.add_parser("pull", help="Download a page's editable source into a retained directory.")
+    pull.add_argument("page", help="Page ID or full ShowMe page URL.")
+    pull.add_argument("directory", help="New destination directory.")
+    pull.add_argument("--json", action="store_true")
+    pull.set_defaults(func=command_pull)
+
     update = subcommands.add_parser("update", help="Replace a page's files without changing its URL.")
     update.add_argument("page", help="Page ID or full ShowMe page URL.")
-    update.add_argument("directory")
+    update.add_argument("directory", nargs="?", help="Site directory; omit when PAGE is a directory containing .showme.json.")
     update.add_argument("--title", help="Optionally change the page title.")
     update.add_argument("--json", action="store_true")
     update.set_defaults(func=command_update)
+
+    workspace = subcommands.add_parser("workspace", help="Manage disposable ShowMe report workspaces.")
+    workspace_commands = workspace.add_subparsers(dest="workspace_command", required=True)
+    workspace_create = workspace_commands.add_parser("create", help="Create an empty managed workspace.")
+    workspace_create.add_argument("--json", action="store_true")
+    workspace_create.set_defaults(func=command_workspace)
+    workspace_pull = workspace_commands.add_parser("pull", help="Download a page into a managed workspace.")
+    workspace_pull.add_argument("page", help="Page ID or full ShowMe page URL.")
+    workspace_pull.add_argument("--json", action="store_true")
+    workspace_pull.set_defaults(func=command_workspace)
+    workspace_clean = workspace_commands.add_parser("clean", help="Remove a managed workspace.")
+    workspace_clean.add_argument("directory")
+    workspace_clean.set_defaults(func=command_workspace)
 
     list_command = subcommands.add_parser("list", help="List published pages.")
     list_command.add_argument("--json", action="store_true")

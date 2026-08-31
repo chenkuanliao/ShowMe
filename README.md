@@ -26,6 +26,8 @@ Licensed under the [MIT License](LICENSE).
 - Archive, restore, and manually delete pages.
 - Rename pages and add searchable notes without changing their published content or URL.
 - Download any page's original HTML and assets as an editable ZIP archive.
+- Treat the server as the source of truth with disposable local workspaces by default.
+- Pull an existing page into a retained local project when you want to keep its source.
 - Search names, notes, page IDs, and machines; filter by status or publishing machine.
 - Single-administrator dashboard with no external identity provider.
 - One API token per local machine, with individual revocation.
@@ -197,6 +199,29 @@ showme update https://showme.example.com/p/PAGE_ID/ ./updated-report --title "Re
 
 The new directory is validated and then swapped into place atomically. A rejected or interrupted upload leaves the existing page content in place.
 
+### Remote-first workspaces
+
+The installed Codex skill creates reports in ShowMe-managed temporary workspaces. After a successful publish or update, it removes that workspace; after a failure, it retains the workspace and reports its path for recovery. ShowMe refuses to clean ordinary directories.
+
+The underlying commands are also available directly:
+
+```bash
+showme workspace create
+showme workspace pull PAGE_ID
+showme workspace clean /path/printed/by/showme
+```
+
+To keep an editable local project, pull it to an explicit new directory:
+
+```bash
+showme pull PAGE_ID ./retained-report
+cd ./retained-report
+# edit index.html and its assets
+showme update .
+```
+
+`showme pull` writes a `.showme.json` manifest linking the project to its server page. ShowMe excludes this manifest and its workspace marker from uploaded assets. A page ID or full ShowMe URL can be used wherever `PAGE_ID` appears above.
+
 ## API tokens
 
 Open **API tokens** in the dashboard to create a separate token for each computer. The token name becomes that machine's label on newly published pages, which makes the dashboard's machine filter useful. Setup never creates one automatically. Raw tokens are displayed once with a **Copy token** button; only their SHA-256 hashes are stored by the server. Revoking one machine's token does not affect other machines or existing pages.
@@ -245,6 +270,15 @@ Upgrade after pulling a new version:
 ```bash
 docker compose up -d --build
 ```
+
+Then update each previously installed publishing machine without changing its saved server, API token, or Codex preference:
+
+```bash
+git pull
+./install.sh --upgrade
+```
+
+Restart Codex after upgrading so it loads the revised publishing skill. Existing reports and URLs do not need to be re-uploaded; their editable source is already stored in the persistent server volume.
 
 Back up the persistent application volume while the app is stopped, or copy `/data` from the `showme` container. It contains SQLite metadata, uploaded sites, and server secrets.
 

@@ -5,7 +5,7 @@ description: Create, publish, or update HTML reports, dashboards, visual summari
 
 # Publish with ShowMe
 
-Create a self-contained webpage directory, upload it through the installed `showme` CLI, and return the published URL.
+Create a self-contained webpage in a disposable ShowMe workspace, upload it through the installed `showme` CLI, remove the workspace after success, and return the published URL. The ShowMe server is the source of truth unless the user asks to retain a local project.
 
 ## Completion contract
 
@@ -23,7 +23,13 @@ The only exception is an explicit request for local-only output or another hosti
 
    If the command is missing or unconfigured, explain the exact error and ask the user to run the ShowMe repository installer. Never read or print `~/.config/showme/config.json`; the CLI owns its API token.
 
-2. Create one directory for the artifact. Put the entry point at `index.html`. Keep CSS and ordinary JavaScript inside that file when practical; place images and other necessary assets in relative subdirectories.
+2. Create a managed disposable workspace and use the printed path as the artifact directory:
+
+   ```bash
+   showme workspace create
+   ```
+
+   Put the entry point at `index.html`. Keep CSS and ordinary JavaScript inside that file when practical; place images and other necessary assets in relative subdirectories.
 
    ```text
    report/
@@ -50,11 +56,27 @@ The only exception is an explicit request for local-only output or another hosti
 
    Let ShowMe generate the passcode unless the user supplied one. Do not invent or expose API tokens.
 
-5. Return the clickable `url` from the JSON response prominently in the final answer, even if the user did not separately ask for a link. For a private page, also return the one-time generated `passcode` and tell the user to save it. Briefly identify the source directory so the user can find the artifact later.
+5. After a successful publish, remove only the managed workspace:
+
+   ```bash
+   showme workspace clean /absolute/path/to/workspace
+   ```
+
+   If verification or publishing fails, retain the workspace and report its path so the work can be recovered. Never clean an ordinary user-provided directory.
+
+6. Return the clickable `url` from the JSON response prominently in the final answer, even if the user did not separately ask for a link. For a private page, also return the one-time generated `passcode` and tell the user to save it.
+
+When the user explicitly asks to keep local source, create or use an ordinary project directory instead of a managed workspace. Publishing never deletes an ordinary directory.
 
 ## Update an existing page
 
-When the user wants to revise a previously published report, replace its content instead of publishing a new page:
+When the user wants to revise a previously published report, download its canonical source into a managed workspace:
+
+```bash
+showme workspace pull PAGE_ID
+```
+
+Edit and verify the printed directory, then replace the page content instead of publishing a new page:
 
 ```bash
 showme update PAGE_ID /absolute/path/to/report --json
@@ -63,6 +85,10 @@ showme update PAGE_ID /absolute/path/to/report --json
 A full ShowMe page URL may replace `PAGE_ID`. Use `--title "New title"` only when the title should also change. This command preserves the page ID, URL, visibility, passcode, and archive state.
 
 Use the page link or ID supplied in the conversation. If it is unavailable, run `showme list` and identify the page by title; do not guess when multiple pages could match. Return the unchanged URL after updating.
+
+After a successful update, clean the managed workspace. Retain and report it if download, editing, verification, or update fails.
+
+For a local project the user wants to retain, use `showme pull PAGE_ID DIRECTORY`. This writes `.showme.json`, allowing later updates from inside the project with `showme update .`. ShowMe metadata files are not uploaded as page assets.
 
 ## Page management
 

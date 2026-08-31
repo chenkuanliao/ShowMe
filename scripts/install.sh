@@ -10,9 +10,10 @@ AGENTS_FILE=${CODEX_HOME:-${HOME}/.codex}/AGENTS.md
 SERVER=""
 TOKEN=""
 CODEX_DEFAULT="ask"
+UPGRADE=no
 
 usage() {
-  echo "Usage: ./scripts/install.sh [--server URL] [--token TOKEN] [--codex-default|--no-codex-default]"
+  echo "Usage: ./scripts/install.sh [--upgrade] [--server URL] [--token TOKEN] [--codex-default|--no-codex-default]"
 }
 
 while [ "$#" -gt 0 ]; do
@@ -21,10 +22,20 @@ while [ "$#" -gt 0 ]; do
     --token) TOKEN=${2:?Missing token}; shift 2 ;;
     --codex-default) CODEX_DEFAULT=yes; shift ;;
     --no-codex-default) CODEX_DEFAULT=no; shift ;;
+    --upgrade) UPGRADE=yes; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
   esac
 done
+
+if [ "$UPGRADE" = "yes" ] && { [ -n "$SERVER" ] || [ -n "$TOKEN" ] || [ "$CODEX_DEFAULT" != "ask" ]; }; then
+  echo "--upgrade cannot be combined with configuration options" >&2
+  exit 2
+fi
+if [ "$UPGRADE" = "yes" ] && [ ! -f "$SHARE_DIR/install-manifest" ]; then
+  echo "ShowMe is not installed as a managed installation; run ./install.sh without --upgrade first." >&2
+  exit 1
+fi
 
 mkdir -p "$BIN_DIR" "$SHARE_DIR" "$(dirname "$SKILL_DIR")"
 if [ -e "$BIN_DIR/showme" ] && [ ! -f "$SHARE_DIR/install-manifest" ]; then
@@ -58,13 +69,13 @@ case ":${PATH}:" in
     ;;
 esac
 
-if [ "$CODEX_DEFAULT" = "ask" ]; then
+if [ "$UPGRADE" = "no" ] && [ "$CODEX_DEFAULT" = "ask" ]; then
   printf "Make ShowMe the default for Codex-generated webpages? [Y/n] "
   read -r answer
   case "$answer" in n|N|no|NO) CODEX_DEFAULT=no ;; *) CODEX_DEFAULT=yes ;; esac
 fi
 
-if [ "$CODEX_DEFAULT" = "yes" ]; then
+if [ "$UPGRADE" = "no" ] && [ "$CODEX_DEFAULT" = "yes" ]; then
   mkdir -p "$(dirname "$AGENTS_FILE")"
   touch "$AGENTS_FILE"
   AGENTS_TMP=$(mktemp "${AGENTS_FILE}.showme.XXXXXX")
@@ -84,7 +95,9 @@ if [ "$CODEX_DEFAULT" = "yes" ]; then
   mv "$AGENTS_TMP" "$AGENTS_FILE"
 fi
 
-if [ -n "$SERVER" ] && [ -n "$TOKEN" ]; then
+if [ "$UPGRADE" = "yes" ]; then
+  "$BIN_DIR/showme" doctor
+elif [ -n "$SERVER" ] && [ -n "$TOKEN" ]; then
   "$BIN_DIR/showme" configure --server "$SERVER" --token "$TOKEN"
 elif [ -n "$SERVER" ]; then
   "$BIN_DIR/showme" configure --server "$SERVER"
@@ -95,5 +108,9 @@ else
 fi
 
 echo ""
-echo "ShowMe installed. Restart Codex if the skill is not immediately visible."
+if [ "$UPGRADE" = "yes" ]; then
+  echo "ShowMe upgraded. Restart Codex to load the updated skill."
+else
+  echo "ShowMe installed. Restart Codex if the skill is not immediately visible."
+fi
 echo "Try: showme doctor"
