@@ -29,6 +29,7 @@ UNINSTALLER = Path.home() / ".local" / "share" / "showme" / "uninstall.sh"
 WORKSPACE_ROOT = Path(tempfile.gettempdir()) / f"showme-workspaces-{os.getuid()}"
 WORKSPACE_MARKER = ".showme-workspace.json"
 PROJECT_MANIFEST = ".showme.json"
+DESCRIPTION_DRAFT = ".showme-description.txt"
 
 
 class ShowMeError(Exception):
@@ -109,7 +110,7 @@ def make_site_zip(site_dir: Path) -> Path:
     for path in site_dir.rglob("*"):
         if path.is_symlink():
             raise ShowMeError(f"Symbolic links are not allowed: {path}")
-        if path.is_file() and path.name not in {WORKSPACE_MARKER, PROJECT_MANIFEST}:
+        if path.is_file() and path.name not in {WORKSPACE_MARKER, PROJECT_MANIFEST, DESCRIPTION_DRAFT}:
             files.append(path)
     handle, archive_name = tempfile.mkstemp(prefix="showme-", suffix=".zip")
     os.close(handle)
@@ -171,6 +172,22 @@ def print_page(result: dict, as_json: bool = False) -> None:
         print("Save this passcode; it will not be shown again.")
 
 
+def description_from_args(args) -> str | None:
+    if getattr(args, "description", None) is not None:
+        value = args.description.strip()
+    elif getattr(args, "description_file", None) is not None:
+        path = Path(args.description_file).expanduser()
+        try:
+            value = path.read_text(encoding="utf-8").strip()
+        except OSError as error:
+            raise ShowMeError(f"Cannot read description file {path}: {error}") from error
+    else:
+        return None
+    if len(value) > 2000:
+        raise ShowMeError("Descriptions may contain at most 2000 characters.")
+    return value
+
+
 def command_configure(args) -> None:
     existing = {}
     if CONFIG_PATH.exists():
@@ -197,11 +214,14 @@ def command_configure(args) -> None:
 def command_publish(args) -> None:
     if args.passcode and not args.private:
         raise ShowMeError("--passcode requires --private.")
+    description = description_from_args(args)
     archive = make_site_zip(Path(args.directory))
     fields = {
         "title": args.title or Path(args.directory).resolve().name,
         "visibility": "private" if args.private else "public",
     }
+    if description is not None:
+        fields["description"] = description
     if args.passcode:
         fields["passcode"] = args.passcode
     try:
@@ -330,6 +350,7 @@ def command_workspace(args) -> None:
 
 
 def command_update(args) -> None:
+    description = description_from_args(args)
     if args.directory is None:
         directory = Path(args.page)
         manifest = project_manifest(directory)
@@ -345,6 +366,8 @@ def command_update(args) -> None:
         page_id = page_id_from_reference(args.page)
     archive = make_site_zip(directory)
     fields = {"title": args.title} if args.title else {}
+    if description is not None:
+        fields["description"] = description
     try:
         result = multipart_upload(
             archive,
@@ -360,6 +383,28 @@ def command_update(args) -> None:
     print(f"Updated: {result['url']}")
     print(f"ID:      {result['id']}")
     print(f"Title:   {result['title']}")
+
+
+def command_details(args) -> None:
+    payload = {}
+    if args.title is not None:
+        title = args.title.strip()
+        if not title:
+            raise ShowMeError("The title cannot be empty.")
+        payload["title"] = title
+    description = description_from_args(args)
+    if description is not None:
+        payload["description"] = description
+    if not payload:
+        raise ShowMeError("Provide --title, --description, or --description-file.")
+    page_id = page_id_from_reference(args.page)
+    result = api_request("PATCH", f"/api/pages/{page_id}", payload=payload)
+    if args.json:
+        print(json.dumps(result, indent=2))
+        return
+    print(f"Updated details: {result['url']}")
+    print(f"Title:       {result['title']}")
+    print(f"Description: {result['description'] or '(empty)'}")
 
 
 def command_list(args) -> None:
@@ -434,6 +479,12 @@ def command_uninstall(args) -> None:
     subprocess.run(command, check=True)
 
 
+def add_description_arguments(command) -> None:
+    group = command.add_mutually_exclusive_group()
+    group.add_argument("--description", help="Searchable context explaining why the page was created.")
+    group.add_argument("--description-file", help="Read the page description from a UTF-8 text file.")
+
+
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(prog="showme", description="Publish webpage directories to a ShowMe server.")
     subcommands = root.add_subparsers(dest="command", required=True)
@@ -448,6 +499,7 @@ def parser() -> argparse.ArgumentParser:
     publish.add_argument("--title")
     publish.add_argument("--private", action="store_true")
     publish.add_argument("--passcode")
+    add_description_arguments(publish)
     publish.add_argument("--json", action="store_true")
     publish.set_defaults(func=command_publish)
 
@@ -461,8 +513,16 @@ def parser() -> argparse.ArgumentParser:
     update.add_argument("page", help="Page ID or full ShowMe page URL.")
     update.add_argument("directory", nargs="?", help="Site directory; omit when PAGE is a directory containing .showme.json.")
     update.add_argument("--title", help="Optionally change the page title.")
+    add_description_arguments(update)
     update.add_argument("--json", action="store_true")
     update.set_defaults(func=command_update)
+
+    details = subcommands.add_parser("details", help="Change page metadata without replacing its content.")
+    details.add_argument("page", help="Page ID or full ShowMe page URL.")
+    details.add_argument("--title")
+    add_description_arguments(details)
+    details.add_argument("--json", action="store_true")
+    details.set_defaults(func=command_details)
 
     workspace = subcommands.add_parser("workspace", help="Manage disposable ShowMe report workspaces.")
     workspace_commands = workspace.add_subparsers(dest="workspace_command", required=True)

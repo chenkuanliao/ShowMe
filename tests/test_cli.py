@@ -34,6 +34,7 @@ def test_make_site_zip_excludes_showme_metadata(tmp_path):
     (tmp_path / "index.html").write_text("<h1>Report</h1>", encoding="utf-8")
     (tmp_path / ".showme.json").write_text('{"page_id":"abc"}', encoding="utf-8")
     (tmp_path / ".showme-workspace.json").write_text('{"id":"marker"}', encoding="utf-8")
+    (tmp_path / ".showme-description.txt").write_text("draft", encoding="utf-8")
     archive_path = CLI.make_site_zip(tmp_path)
     try:
         with zipfile.ZipFile(archive_path) as archive:
@@ -69,6 +70,20 @@ def test_page_id_from_reference():
     assert CLI.page_id_from_reference("https://showme.example.com/p/abc123/") == "abc123"
     with pytest.raises(CLI.ShowMeError, match="PAGE_ID"):
         CLI.page_id_from_reference("https://showme.example.com/admin")
+
+
+def test_description_arguments_are_mutually_exclusive():
+    with pytest.raises(SystemExit):
+        CLI.parser().parse_args(
+            [
+                "publish",
+                "report",
+                "--description",
+                "inline",
+                "--description-file",
+                "description.txt",
+            ]
+        )
 
 
 def test_installer_publish_and_uninstaller_lifecycle(tmp_path):
@@ -125,7 +140,16 @@ def test_installer_publish_and_uninstaller_lifecycle(tmp_path):
         site.mkdir()
         (site / "index.html").write_text("<h1>CLI integration</h1>", encoding="utf-8")
         published = subprocess.run(
-            [str(installed_cli), "publish", str(site), "--title", "CLI integration", "--json"],
+            [
+                str(installed_cli),
+                "publish",
+                str(site),
+                "--title",
+                "CLI integration",
+                "--description",
+                "Created to test searchable publishing context.",
+                "--json",
+            ],
             env=environment,
             check=True,
             capture_output=True,
@@ -135,6 +159,7 @@ def test_installer_publish_and_uninstaller_lifecycle(tmp_path):
         assert result["title"] == "CLI integration"
         assert result["visibility"] == "public"
         assert result["machine"] == "cli integration"
+        assert result["description"] == "Created to test searchable publishing context."
 
         retained = tmp_path / "retained-report"
         pulled_process = subprocess.run(
@@ -158,7 +183,51 @@ def test_installer_publish_and_uninstaller_lifecycle(tmp_path):
             capture_output=True,
             text=True,
         )
-        assert json.loads(manifest_update.stdout)["id"] == result["id"]
+        manifest_updated = json.loads(manifest_update.stdout)
+        assert manifest_updated["id"] == result["id"]
+        assert manifest_updated["description"] == "Created to test searchable publishing context."
+
+        description_file = tmp_path / "description.txt"
+        description_file.write_text(
+            "Expanded to cover retained projects and remote workspaces.\n", encoding="utf-8"
+        )
+        described_update = subprocess.run(
+            [
+                str(installed_cli),
+                "update",
+                str(retained),
+                "--description-file",
+                str(description_file),
+                "--json",
+            ],
+            env=environment,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        assert json.loads(described_update.stdout)["description"] == (
+            "Expanded to cover retained projects and remote workspaces."
+        )
+
+        details_process = subprocess.run(
+            [
+                str(installed_cli),
+                "details",
+                result["url"],
+                "--title",
+                "CLI details",
+                "--description",
+                "Metadata-only description update.",
+                "--json",
+            ],
+            env=environment,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        details = json.loads(details_process.stdout)
+        assert details["title"] == "CLI details"
+        assert details["description"] == "Metadata-only description update."
 
         workspace_process = subprocess.run(
             [str(installed_cli), "workspace", "pull", result["id"], "--json"],
@@ -200,6 +269,7 @@ def test_installer_publish_and_uninstaller_lifecycle(tmp_path):
         assert updated["id"] == result["id"]
         assert updated["url"] == result["url"]
         assert updated["title"] == "CLI updated"
+        assert updated["description"] == "Metadata-only description update."
 
         upgraded = subprocess.run(
             [str(repository / "install.sh"), "--upgrade"],

@@ -553,9 +553,15 @@ def create_app(test_config: dict | None = None) -> Flask:
         except ValueError as error:
             return jsonify(error=str(error)), 400
         title = request.form.get("title", "").strip()[:160] or page["title"]
+        supplied_description = request.form.get("description")
+        description = (
+            supplied_description.strip()[:2000]
+            if supplied_description is not None
+            else page["description"]
+        )
         get_db().execute(
-            "UPDATE pages SET title = ?, updated_at = ? WHERE id = ?",
-            (title, utcnow(), page_id),
+            "UPDATE pages SET title = ?, description = ?, updated_at = ? WHERE id = ?",
+            (title, description, utcnow(), page_id),
         )
         get_db().commit()
         return jsonify(page_json(page_id))

@@ -169,6 +169,15 @@ For reliable agent automation, add `--json`:
 showme publish ./report --title "Benchmark report" --json
 ```
 
+Add searchable context explaining why the report was created:
+
+```bash
+showme publish ./report --title "Benchmark report" \
+  --description "Created to compare regional latency regressions and prioritize follow-up work."
+```
+
+For descriptions that are easier to prepare as text files, use `--description-file PATH`. Descriptions are limited to 2,000 characters, appear on the dashboard, and are included in dashboard search. The installed Codex skill generates a concise description from the report request automatically.
+
 ## Managing pages
 
 All operations are available from the dashboard. Common CLI commands are:
@@ -182,9 +191,12 @@ showme archive PAGE_ID
 showme restore PAGE_ID
 showme delete PAGE_ID
 showme open PAGE_ID
+showme details PAGE_ID --description "Created to investigate August latency regressions."
 ```
 
-Use **Edit details** in a page's dashboard menu to change its name or add notes. The name is also used as the published page's browser-tab title; ShowMe applies it when serving the page and does not rewrite the uploaded HTML file or body. Notes are dashboard-only metadata and are included in search.
+Use **Edit details** in a page's dashboard menu to change its name or description. The name is also used as the published page's browser-tab title; ShowMe applies it when serving the page and does not rewrite the uploaded HTML file or body. Descriptions are dashboard-only metadata and are included in search.
+
+`showme details` changes the same dashboard metadata without replacing page content. It accepts `--title`, `--description`, or `--description-file`. Content updates preserve the existing description unless one of the description options is supplied explicitly.
 
 Use **Download source** in the same menu to retrieve the original uploaded directory as a ZIP. The archive contains a single named folder with `index.html` and all relative assets, ready to edit locally and publish again. Downloads require an administrator dashboard session, including for public pages.
 
@@ -220,7 +232,7 @@ cd ./retained-report
 showme update .
 ```
 
-`showme pull` writes a `.showme.json` manifest linking the project to its server page. ShowMe excludes this manifest and its workspace marker from uploaded assets. A page ID or full ShowMe URL can be used wherever `PAGE_ID` appears above.
+`showme pull` writes a `.showme.json` manifest linking the project to its server page. ShowMe excludes this manifest, its workspace marker, and `.showme-description.txt` drafts from uploaded assets. A page ID or full ShowMe URL can be used wherever `PAGE_ID` appears above.
 
 ## API tokens
 

@@ -27,9 +27,9 @@
         <small class="field-hint">Shown on the dashboard and in the browser tab when the page opens.</small>
       </label>
       <label class="field">
-        <span>Notes <em>Optional</em></span>
-        <textarea name="description" maxlength="2000" rows="6" placeholder="Add context, findings, or anything that will help you find this page later.">{{ form_description if form_description is defined else page['description'] }}</textarea>
-        <small class="field-hint">Notes are visible on the dashboard and included in search.</small>
+        <span>Description <em>Optional</em></span>
+        <textarea name="description" maxlength="2000" rows="6" placeholder="Explain why this page was created, its scope, or the decision it supports.">{{ form_description if form_description is defined else page['description'] }}</textarea>
+        <small class="field-hint">The description is visible on the dashboard and included in search.</small>
       </label>
       <div class="form-actions">
         <button class="btn btn-primary" type="submit">{{ icon('check') }} Save changes</button>

@@ -161,9 +161,22 @@ def test_complete_page_lifecycle():
     updated = response.get_json()
     assert updated["url"] == original_url
     assert updated["title"] == "Updated report"
+    assert updated["description"] == "GPU findings for the August comparison."
     assert b"<title>Updated report</title><h1>Updated</h1>" in client.get(f"/p/{page_id}/").data
     assert client.get(f"/p/{page_id}/assets/new.txt").data == b"new asset"
     assert client.get(f"/p/{page_id}/assets/dot.txt").status_code == 404
+
+    response = client.put(
+        f"/api/pages/{page_id}/content",
+        headers=headers,
+        data={
+            "description": "Expanded to include September latency results.",
+            "site": (site_zip({"index.html": "<h1>Updated</h1>", "assets/new.txt": "new asset"}), "site.zip"),
+        },
+        content_type="multipart/form-data",
+    )
+    assert response.status_code == 200
+    assert response.get_json()["description"] == "Expanded to include September latency results."
 
     response = client.put(
         f"/api/pages/{page_id}/content",

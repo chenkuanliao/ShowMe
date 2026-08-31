@@ -42,16 +42,20 @@ The only exception is an explicit request for local-only output or another hosti
 
 3. Verify that `index.html` exists and referenced local assets are inside the directory. Perform any task-appropriate local checks before publishing.
 
+   Write a brief searchable description to `.showme-description.txt` in the workspace. In one or two sentences, capture why the user requested the report, its important scope or timeframe, and the decision or investigation it supports. Prefer the user's terminology so dashboard search works well. Do not include credentials, passcodes, sensitive local paths, or irrelevant conversation details. This draft metadata file is excluded from published page assets.
+
 4. Publish after the artifact is ready:
 
    ```bash
-   showme publish /absolute/path/to/report --title "Descriptive title" --json
+   showme publish /absolute/path/to/report --title "Descriptive title" \
+     --description-file /absolute/path/to/report/.showme-description.txt --json
    ```
 
    Public is the default. When the user requests private access, use:
 
    ```bash
-   showme publish /absolute/path/to/report --title "Descriptive title" --private --json
+   showme publish /absolute/path/to/report --title "Descriptive title" \
+     --description-file /absolute/path/to/report/.showme-description.txt --private --json
    ```
 
    Let ShowMe generate the passcode unless the user supplied one. Do not invent or expose API tokens.
@@ -84,6 +88,8 @@ showme update PAGE_ID /absolute/path/to/report --json
 
 A full ShowMe page URL may replace `PAGE_ID`. Use `--title "New title"` only when the title should also change. This command preserves the page ID, URL, visibility, passcode, and archive state.
 
+Ordinary revisions preserve the existing description. Supply `--description` or `--description-file` only when the user's new request materially changes the report's purpose or scope; do not replace useful origin context for cosmetic or data-refresh updates.
+
 Use the page link or ID supplied in the conversation. If it is unavailable, run `showme list` and identify the page by title; do not guess when multiple pages could match. Return the unchanged URL after updating.
 
 After a successful update, clean the managed workspace. Retain and report it if download, editing, verification, or update fails.
@@ -98,6 +104,7 @@ Use the CLI for requested changes:
 showme visibility PAGE_ID public
 showme visibility PAGE_ID private
 showme update PAGE_ID /absolute/path/to/report
+showme details PAGE_ID --description "Why this page was created"
 showme archive PAGE_ID
 showme restore PAGE_ID
 showme delete PAGE_ID
