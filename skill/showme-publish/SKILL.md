@@ -1,15 +1,17 @@
 ---
 name: showme-publish
-description: Create, publish, or update HTML reports, dashboards, visual summaries, and webpage artifacts on a configured personal ShowMe server, then always return the remote link. Use whenever the user asks for a report or artifact in HTML/webpage form, asks to host/share/publish one, or invokes or pins this skill. Publishing and returning the URL are automatic when this skill is used; do not wait for a separate request for a link. Do not use when the user explicitly requests local-only output or a different hosting destination.
+description: Create, publish, or update HTML reports, dashboards, visual summaries, and webpage artifacts on a configured personal ShowMe server, then always return the remote link. Use whenever the user asks for a report or artifact in HTML/webpage form, asks to host/share/publish one, or explicitly invokes this skill. Publishing and returning the URL are automatic when this skill is used; do not wait for a separate request for a link. Do not use when the user explicitly requests local-only output or a different hosting destination.
 ---
 
 # Publish with ShowMe
 
 Create a self-contained webpage in a disposable ShowMe workspace, upload it through the installed `showme` CLI, remove the workspace after success, and return the published URL. The ShowMe server is the source of truth unless the user asks to retain a local project.
 
+Use `$showme-publish` in Codex or `/showme-publish` in Claude Code to invoke this skill. Both agents use the same CLI and saved server configuration.
+
 ## Completion contract
 
-When this skill is invoked or pinned, publishing is part of completing the task. After creating or revising the HTML, upload it without asking whether the user wants it published. The final response must contain the clickable ShowMe URL. A local file path alone is not a completed result.
+When this skill is explicitly invoked, publishing is part of completing the task. After creating or revising the HTML, upload it without asking whether the user wants it published. The final response must contain the clickable ShowMe URL. A local file path alone is not a completed result.
 
 The only exception is an explicit request for local-only output or another hosting destination. If ShowMe is unavailable, report the precise blocker instead of silently falling back to a local-only handoff.
 

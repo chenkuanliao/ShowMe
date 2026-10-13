@@ -86,7 +86,8 @@ def test_description_arguments_are_mutually_exclusive():
         )
 
 
-def test_installer_publish_and_uninstaller_lifecycle(tmp_path):
+@pytest.mark.parametrize("agent", ["codex", "claude", "both"])
+def test_installer_publish_and_uninstaller_lifecycle(tmp_path, agent):
     from showme_server.app import create_app, get_db, hash_secret, utcnow
 
     app = create_app({"TESTING": True, "SECURE_COOKIES": False})
@@ -108,8 +109,13 @@ def test_installer_publish_and_uninstaller_lifecycle(tmp_path):
         "Personal instructions\n\n<!-- showme:start -->\nold ShowMe instruction\n<!-- showme:end -->\n",
         encoding="utf-8",
     )
+    (home / ".claude").mkdir()
+    (home / ".claude" / "CLAUDE.md").write_text(
+        "Claude personal instructions\n\n<!-- showme:start -->\nold Claude instruction\n<!-- showme:end -->\n",
+        encoding="utf-8",
+    )
     environment = os.environ.copy()
-    environment.update({"HOME": str(home), "CODEX_HOME": str(home / ".codex")})
+    environment.update({"HOME": str(home), "CODEX_HOME": str(home / ".codex"), "XDG_CONFIG_HOME": str(home / ".config")})
     server_url = f"http://127.0.0.1:{server.server_port}"
     try:
         subprocess.run(
@@ -119,7 +125,10 @@ def test_installer_publish_and_uninstaller_lifecycle(tmp_path):
                 server_url,
                 "--token",
                 "cli-integration-token",
-                "--codex-default",
+                "--agent",
+                "codex" if agent == "both" else agent,
+                *(["--codex-default"] if agent in ("codex", "both") else []),
+                *(["--claude-default"] if agent == "claude" else []),
             ],
             cwd=repository,
             env=environment,
@@ -127,14 +136,32 @@ def test_installer_publish_and_uninstaller_lifecycle(tmp_path):
             capture_output=True,
             text=True,
         )
+        if agent == "both":
+            subprocess.run(
+                [str(repository / "install.sh"), "--agent", "both", "--codex-default", "--claude-default",
+                 "--server", server_url, "--token", "cli-integration-token"],
+                env=environment, check=True, capture_output=True, text=True,
+            )
         installed_cli = home / ".local" / "bin" / "showme"
         assert installed_cli.is_file()
-        assert (home / ".agents" / "skills" / "showme-publish" / "SKILL.md").is_file()
-        agents_text = (home / ".codex" / "AGENTS.md").read_text(encoding="utf-8")
-        assert agents_text.count("<!-- showme:start -->") == 1
-        assert "publish it automatically" in agents_text
-        assert "old ShowMe instruction" not in agents_text
-        assert "Personal instructions" in agents_text
+        integrations = []
+        if agent in ("codex", "both"):
+            integrations.append((home / ".agents" / "skills" / "showme-publish", home / ".codex" / "AGENTS.md", "Personal instructions"))
+        if agent in ("claude", "both"):
+            integrations.append((home / ".claude" / "skills" / "showme-publish", home / ".claude" / "CLAUDE.md", "Claude personal instructions"))
+        for skill, instructions, personal in integrations:
+            assert (skill / "SKILL.md").is_file()
+            instructions_text = instructions.read_text(encoding="utf-8")
+            assert instructions_text.count("<!-- showme:start -->") == 1
+            assert "publish it automatically" in instructions_text
+            assert "old " not in instructions_text
+            assert personal in instructions_text
+        if agent == "claude":
+            assert not (home / ".agents" / "skills" / "showme-publish").exists()
+        if agent == "codex":
+            # Older installations stored only four manifest lines.
+            manifest = home / ".local" / "share" / "showme" / "install-manifest"
+            manifest.write_text("\n".join(manifest.read_text().splitlines()[:4]) + "\n")
 
         site = tmp_path / "site"
         site.mkdir()
@@ -271,6 +298,27 @@ def test_installer_publish_and_uninstaller_lifecycle(tmp_path):
         assert updated["title"] == "CLI updated"
         assert updated["description"] == "Metadata-only description update."
 
+        if agent == "both":
+            codex_instructions = home / ".codex" / "AGENTS.md"
+            codex_before = codex_instructions.read_bytes()
+            for preference in ("--no-claude-default", "--claude-default"):
+                subprocess.run(
+                    [str(repository / "install.sh"), "--agent", "claude", preference,
+                     "--server", server_url, "--token", "cli-integration-token"],
+                    env=environment, check=True, capture_output=True, text=True,
+                )
+                assert codex_instructions.read_bytes() == codex_before
+                claude_text = (home / ".claude" / "CLAUDE.md").read_text()
+                assert ("<!-- showme:start -->" in claude_text) == (preference == "--claude-default")
+                assert "Claude personal instructions" in claude_text
+                assert (home / ".agents" / "skills" / "showme-publish" / "SKILL.md").is_file()
+            # Use the recorded Codex path even when CODEX_HOME changes later.
+            environment["CODEX_HOME"] = str(home / "different-codex-home")
+
+        saved_config = (home / ".config" / "showme" / "config.json").read_bytes()
+        preferences = {path: path.read_bytes() for _, path, _ in integrations}
+        for skill, _, _ in integrations:
+            (skill / "SKILL.md").write_text("stale skill")
         upgraded = subprocess.run(
             [str(repository / "install.sh"), "--upgrade"],
             cwd=repository,
@@ -282,6 +330,11 @@ def test_installer_publish_and_uninstaller_lifecycle(tmp_path):
         assert "ShowMe upgraded" in upgraded.stdout
         assert "Status: connected" in upgraded.stdout
 
+        assert (home / ".config" / "showme" / "config.json").read_bytes() == saved_config
+        for skill, instructions, _ in integrations:
+            assert "Publish with ShowMe" in (skill / "SKILL.md").read_text()
+            assert instructions.read_bytes() == preferences[instructions]
+
         subprocess.run(
             [str(installed_cli), "uninstall", "--all"],
             env=environment,
@@ -291,8 +344,46 @@ def test_installer_publish_and_uninstaller_lifecycle(tmp_path):
         )
         assert not installed_cli.exists()
         assert not (home / ".agents" / "skills" / "showme-publish").exists()
-        assert "<!-- showme:start -->" not in (home / ".codex" / "AGENTS.md").read_text(encoding="utf-8")
+        for skill, instructions, personal in integrations:
+            assert not skill.exists()
+            assert "<!-- showme:start -->" not in instructions.read_text()
+            assert personal in instructions.read_text()
+        if agent == "claude":
+            assert "old ShowMe instruction" in (home / ".codex" / "AGENTS.md").read_text()
+        if agent == "codex":
+            assert "old Claude instruction" in (home / ".claude" / "CLAUDE.md").read_text()
         assert not (home / ".config" / "showme").exists()
     finally:
         server.shutdown()
         thread.join(timeout=2)
+
+
+@pytest.mark.parametrize("arguments", [
+    ["--agent", "invalid"],
+    ["--agent", "claude", "--codex-default"],
+    ["--agent", "codex", "--claude-default"],
+    ["--upgrade", "--agent", "both"],
+])
+def test_installer_rejects_invalid_options_without_changes(tmp_path, arguments):
+    repository = Path(__file__).parents[1]
+    environment = {**os.environ, "HOME": str(tmp_path)}
+    result = subprocess.run([str(repository / "install.sh"), *arguments], env=environment, capture_output=True, text=True)
+    assert result.returncode == 2
+    assert not list(tmp_path.iterdir())
+
+
+def test_installer_preserves_unmanaged_claude_skill(tmp_path):
+    repository = Path(__file__).parents[1]
+    skill = tmp_path / ".claude" / "skills" / "showme-publish"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text("Personal skill")
+    environment = {**os.environ, "HOME": str(tmp_path)}
+    result = subprocess.run(
+        [str(repository / "install.sh"), "--agent", "both", "--no-codex-default", "--no-claude-default"],
+        env=environment, capture_output=True, text=True,
+    )
+    assert result.returncode == 1
+    assert "unmanaged skill" in result.stderr
+    assert (skill / "SKILL.md").read_text() == "Personal skill"
+    assert not (tmp_path / ".local" / "bin" / "showme").exists()
+    assert not (tmp_path / ".agents").exists()

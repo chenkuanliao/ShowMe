@@ -31,7 +31,7 @@ Licensed under the [MIT License](LICENSE).
 - Search names, notes, page IDs, and machines; filter by status or publishing machine.
 - Single-administrator dashboard with no external identity provider.
 - One API token per local machine, with individual revocation.
-- Global Codex skill and optional global publishing preference.
+- Global Codex and Claude Code skills with optional per-agent publishing preferences.
 - Reversible local installation.
 
 ## Security and trust model
@@ -102,8 +102,10 @@ The setup URL is valid only while no administrator exists. Its token is stored i
 On every machine that should publish pages, clone the repository and run:
 
 ```bash
-./install.sh
+./install.sh --agent both
 ```
+
+Choose `--agent codex`, `--agent claude`, or `--agent both`. Omitting `--agent` retains the existing Codex-only default. Running the installer again with another agent adds that integration and retains existing ones.
 
 The server prompt defaults to `http://127.0.0.1`. It also accepts a bare IP such as `203.0.113.10` and automatically treats it as HTTP; an explicit `http://` or `https://` is always respected.
 
@@ -111,22 +113,26 @@ The installer:
 
 - Installs `showme` at `~/.local/bin/showme`.
 - Saves the server URL and API token in `~/.config/showme/config.json` with mode `0600`.
-- Installs the global Codex skill at `~/.agents/skills/showme-publish`.
-- Optionally adds a marked ShowMe preference to `~/.codex/AGENTS.md`.
+- Installs the selected global skills: Codex at `~/.agents/skills/showme-publish` and Claude Code at `~/.claude/skills/showme-publish`.
+- Optionally adds a marked ShowMe preference to Codex’s `~/.codex/AGENTS.md` (or `$CODEX_HOME/AGENTS.md`) and Claude Code’s `~/.claude/CLAUDE.md`. Existing unrelated instructions are preserved.
 - Installs a standalone uninstaller.
 
 For unattended setup:
 
 ```bash
 ./install.sh \
+  --agent both \
   --server https://showme.example.com \
   --token 'TOKEN_FROM_THE_DASHBOARD' \
-  --codex-default
+  --codex-default \
+  --claude-default
 ```
+
+Use `--no-codex-default` or `--no-claude-default` to install a selected agent’s skill without the global publishing preference. These flags also remove a previously installed ShowMe preference for that selected agent. Without preference flags, the installer asks separately for each selected agent.
 
 Passing a token on the command line can place it in shell history. Interactive setup is preferred on shared machines.
 
-If `~/.local/bin` is not on `PATH`, add it to the shell profile and restart the shell. Restart Codex if the newly installed skill does not appear immediately.
+If `~/.local/bin` is not on `PATH`, add it to the shell profile and restart the shell. Restart the selected coding agents if the newly installed skill does not appear immediately.
 
 Verify the installation:
 
@@ -134,7 +140,7 @@ Verify the installation:
 showme doctor
 ```
 
-When the preference is enabled—or when you explicitly invoke or pin `$showme-publish`—the installed instructions treat publishing as part of completing an HTML report. Codex should upload the finished artifact and return its clickable ShowMe link without requiring a second request to publish it.
+Invoke the skill with `$showme-publish` in Codex or `/showme-publish` in Claude Code. When the preference is enabled—or when you explicitly invoke the skill—the installed instructions treat publishing as part of completing an HTML report. The agent should upload the finished artifact and return its clickable ShowMe link without requiring a second request to publish it.
 
 ## Publishing
 
@@ -176,7 +182,7 @@ showme publish ./report --title "Benchmark report" \
   --description "Created to compare regional latency regressions and prioritize follow-up work."
 ```
 
-For descriptions that are easier to prepare as text files, use `--description-file PATH`. Descriptions are limited to 2,000 characters, appear on the dashboard, and are included in dashboard search. The installed Codex skill generates a concise description from the report request automatically.
+For descriptions that are easier to prepare as text files, use `--description-file PATH`. Descriptions are limited to 2,000 characters, appear on the dashboard, and are included in dashboard search. The installed publishing skill generates a concise description from the report request automatically.
 
 ## Managing pages
 
@@ -213,7 +219,7 @@ The new directory is validated and then swapped into place atomically. A rejecte
 
 ### Remote-first workspaces
 
-The installed Codex skill creates reports in ShowMe-managed temporary workspaces. After a successful publish or update, it removes that workspace; after a failure, it retains the workspace and reports its path for recovery. ShowMe refuses to clean ordinary directories.
+The installed publishing skill creates reports in ShowMe-managed temporary workspaces. After a successful publish or update, it removes that workspace; after a failure, it retains the workspace and reports its path for recovery. ShowMe refuses to clean ordinary directories.
 
 The underlying commands are also available directly:
 
@@ -238,7 +244,7 @@ showme update .
 
 Open **API tokens** in the dashboard to create a separate token for each computer. The token name becomes that machine's label on newly published pages, which makes the dashboard's machine filter useful. Setup never creates one automatically. Raw tokens are displayed once with a **Copy token** button; only their SHA-256 hashes are stored by the server. Revoking one machine's token does not affect other machines or existing pages.
 
-The local CLI owns the credential. The Codex skill instructs agents not to read or print the configuration file.
+The local CLI owns the credential. The publishing skill instructs agents not to read or print the configuration file.
 
 ## Administrator recovery
 
@@ -264,7 +270,7 @@ Or from a repository clone:
 ./uninstall.sh
 ```
 
-The uninstaller removes the CLI, global skill, and only the marked ShowMe block in the global `AGENTS.md`. It asks whether to retain the saved server URL and API token.
+The uninstaller removes the CLI, managed skills for installed agents, and only the marked ShowMe blocks in their global instruction files. It uses recorded installation paths and supports older Codex-only installations. It asks whether to retain the saved server URL and API token.
 
 Non-interactive variants:
 
@@ -283,14 +289,14 @@ Upgrade after pulling a new version:
 docker compose up -d --build
 ```
 
-Then update each previously installed publishing machine without changing its saved server, API token, or Codex preference:
+Then update each previously installed publishing machine without changing its saved server, API token, or agent preferences:
 
 ```bash
 git pull
 ./install.sh --upgrade
 ```
 
-Restart Codex after upgrading so it loads the revised publishing skill. Existing reports and URLs do not need to be re-uploaded; their editable source is already stored in the persistent server volume.
+Restart your installed coding agents after upgrading so it loads the revised publishing skill. Existing reports and URLs do not need to be re-uploaded; their editable source is already stored in the persistent server volume.
 
 Back up the persistent application volume while the app is stopped, or copy `/data` from the `showme` container. It contains SQLite metadata, uploaded sites, and server secrets.
 

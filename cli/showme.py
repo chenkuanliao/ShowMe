@@ -568,7 +568,7 @@ def parser() -> argparse.ArgumentParser:
     doctor = subcommands.add_parser("doctor", help="Check configuration and connectivity.")
     doctor.set_defaults(func=command_doctor)
 
-    uninstall = subcommands.add_parser("uninstall", help="Remove the local CLI and Codex integration.")
+    uninstall = subcommands.add_parser("uninstall", help="Remove the local CLI and installed coding-agent integrations.")
     uninstall.add_argument("--all", action="store_true", help="Also remove saved configuration and token.")
     uninstall.add_argument("--keep-config", action="store_true")
     uninstall.set_defaults(func=command_uninstall)
